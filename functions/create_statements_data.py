@@ -19,7 +19,7 @@ def convert_statements_from_json_to_jsonl(input_file, output_file, key_items):
             else:
                 # Join paragraphs with two newlines if key item is statement2paragraphs
                 if key_item == "statement2paragraphs":
-                    jsonl_line[key_item] = "\n\n".join(statement[key_item])
+                    jsonl_line["text"] = "\n\n".join(statement[key_item])
                 else:
                     jsonl_line[key_item] = statement[key_item]
         
@@ -40,9 +40,10 @@ def convert_statements_from_json_to_jsonl(input_file, output_file, key_items):
 
 if __name__ == "__main__":
 
-    key_items = ["id", "title"]
+    key_items = ["id", "statement2paragraphs"]
+    key_items_file_name = ["text" if key_item == "statement2paragraphs" else key_item for key_item in key_items]
     input_file = 'data/statements.json'
-    output_file = 'data/' + 'statements_' + "_".join(key_items) + '.jsonl'
+    output_file = 'data/' + 'statements_' + "_".join(key_items_file_name) + '.jsonl'
     convert_statements_from_json_to_jsonl(input_file, output_file, key_items)
 
 

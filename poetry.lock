@@ -1029,13 +1029,13 @@ requests = ">=2,<3"
 
 [[package]]
 name = "llama-index"
-version = "0.9.15"
+version = "0.9.17.dev1"
 description = "Interface between LLMs and your data"
 optional = false
 python-versions = ">=3.8.1,<4.0"
 files = [
-    {file = "llama_index-0.9.15-py3-none-any.whl", hash = "sha256:ea73c1c37745f62b7363e69b992cde21ea1d26add3190d7ad2112acc70acd4b1"},
-    {file = "llama_index-0.9.15.tar.gz", hash = "sha256:0f6501db61a6b72ed8c293353331b58d16db202323c9312241b071ce1f78a655"},
+    {file = "llama_index-0.9.17.dev1-py3-none-any.whl", hash = "sha256:9bdf5c12b14eba56b009a504f4831ffb13dac675d4fd2e3539dc60f19c1739cc"},
+    {file = "llama_index-0.9.17.dev1.tar.gz", hash = "sha256:2399d97aec5ae0623b2a8a24c753e1bfd54a44817820d435bdfe2dccb2cfcd58"},
 ]
 
 [package.dependencies]
@@ -1054,7 +1054,6 @@ requests = ">=2.31.0"
 SQLAlchemy = {version = ">=1.4.49", extras = ["asyncio"]}
 tenacity = ">=8.2.0,<9.0.0"
 tiktoken = ">=0.3.3"
-types-protobuf = ">=4.24.0.4,<5.0.0.0"
 typing-extensions = ">=4.5.0"
 typing-inspect = ">=0.8.0"
 
@@ -3265,17 +3264,6 @@ tests = ["autopep8", "flake8", "isort", "numpy", "pytest", "scipy (>=1.7.1)"]
 tutorials = ["matplotlib", "pandas", "tabulate"]
 
 [[package]]
-name = "types-protobuf"
-version = "4.24.0.4"
-description = "Typing stubs for protobuf"
-optional = false
-python-versions = ">=3.7"
-files = [
-    {file = "types-protobuf-4.24.0.4.tar.gz", hash = "sha256:57ab42cb171dfdba2c74bb5b50c250478538cc3c5ed95b8b368929ad0c9f90a5"},
-    {file = "types_protobuf-4.24.0.4-py3-none-any.whl", hash = "sha256:131ab7d0cbc9e444bc89c994141327dcce7bcaeded72b1acb72a94827eb9c7af"},
-]
-
-[[package]]
 name = "typing-extensions"
 version = "4.9.0"
 description = "Backported and Experimental Type Hints for Python 3.8+"
@@ -3723,4 +3711,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "51474a6f883b67ef14fe9fc25df2d85972a78120c5facc021c9b088a7b085aee"
+content-hash = "a890c2bcbbeea58337617dc420e793cb4a5ce199452e13bce974e5ea82d7ad5a"
