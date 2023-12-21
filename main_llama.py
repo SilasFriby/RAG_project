@@ -18,7 +18,6 @@ from llama_index.extractors import (
     KeywordExtractor,
 )
 from llama_index.llms import HuggingFaceLLM, HuggingFaceInferenceAPI
-from llama_index.llms.huggingface import chat_messages_to_conversational_kwargs
 import torch
 from llama_index.prompts import PromptTemplate
 import accelerate
