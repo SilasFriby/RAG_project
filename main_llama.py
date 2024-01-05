@@ -1,6 +1,5 @@
 import openai
 import os
-import json
 from dotenv import load_dotenv
 from llama_index import (
     SimpleDirectoryReader,
@@ -10,6 +9,7 @@ from llama_index import (
     PromptHelper,
     load_index_from_storage,
     get_response_synthesizer,
+    set_global_service_context,
 )
 from llama_index.embeddings import HuggingFaceEmbedding
 from llama_index.llms import OpenAI
@@ -23,18 +23,13 @@ from llama_index.text_splitter import SentenceSplitter
 # )
 from llama_index.llms import HuggingFaceInferenceAPI
 import torch
-from llama_index.llms.types import ChatMessage
 from llama_index.llms import Ollama
-from llama_index.ingestion import IngestionPipeline
 from llama_index.retrievers import VectorIndexRetriever
 from llama_index.query_engine import RetrieverQueryEngine
 from llama_index.postprocessor import SimilarityPostprocessor
-from llama_index import set_global_service_context
 import nest_asyncio
-from llama_index.tools import QueryEngineTool, ToolMetadata
-from llama_index.query_engine import SubQuestionQueryEngine
-from llama_index.callbacks import CallbackManager, LlamaDebugHandler
-from llama_index.question_gen.llm_generators import LLMQuestionGenerator
+from llama_index.node_parser import SimpleNodeParser
+
 
 # Initialize variables
 documents_dir = "data/statements_txt_files"
@@ -76,14 +71,12 @@ llm_llama2 = Ollama(
 
 
 # Read the documents from the directory
-# reader = SimpleDirectoryReader(input_dir=documents_dir, filename_as_id=True)
-# documents = reader.load_data()
-doc_1 = SimpleDirectoryReader(
-    input_files=["data/statements_txt_files/887b5a418b8292c1.txt"], filename_as_id=True
-).load_data()
-doc_2 = SimpleDirectoryReader(
-    input_files=["data/statements_txt_files/813f156f044d18d0.txt"], filename_as_id=True
-).load_data()
+reader = SimpleDirectoryReader(input_dir=documents_dir, filename_as_id=True)
+documents = reader.load_data()
+
+# Parse nodes
+node_parser = SimpleNodeParser.from_defaults()
+nodes = node_parser.get_nodes_from_documents(documents)
 
 # # Chunking
 # text_splitter = SentenceSplitter(
@@ -106,11 +99,6 @@ embed_model = HuggingFaceEmbedding(model_name="sentence-transformers/all-MiniLM-
 # # Prompt Helper
 # prompt_helper = PromptHelper()
 
-# Using the LlamaDebugHandler to print the trace of the sub questions
-# captured by the SUB_QUESTION callback event type
-llama_debug = LlamaDebugHandler(print_trace_on_end=True)
-callback_manager = CallbackManager([llama_debug])
-
 # Service Context - a bundle of commonly used resources used during the indexing and querying stage in a LlamaIndex pipeline
 service_context = ServiceContext.from_defaults(
     llm=llm_llama2,
@@ -119,135 +107,71 @@ service_context = ServiceContext.from_defaults(
     # prompt_helper=prompt_helper,
     # system_prompt=system_prompt,
     # transformations=[text_splitter],  # + meta_data_extractors,
-    callback_manager=callback_manager,
 )
 
 
 # Set the global service context
 set_global_service_context(service_context)
 
-# # create the pipeline with transformations
-# pipeline = IngestionPipeline(
-#     transformations=[text_splitter] + [embed_model] #+ meta_data_extractors
-# )
 
-# # run the pipeline
-# nodes = pipeline.run(documents=documents, in_place=True, show_progress=True,)
+# Indexing - load from disk or create new index from documents
+if load_index:
+    storage_context = StorageContext.from_defaults(persist_dir="vector_store")
+    index = load_index_from_storage(storage_context, index_id="vector_index")
+else:
+    index = VectorStoreIndex.from_documents(documents, use_async=True, show_progress=True)
 
-# # Print metadata in json format
-# for node in nodes:
-#     metadata_json = json.dumps(node.metadata, indent=4)  # Convert metadata to formatted JSON
-#     print(metadata_json)
-
-# # Indexing - load from disk or create new index from documents
-# if load_index:
-#     storage_context = StorageContext.from_defaults(persist_dir="vector_store")
-#     index = load_index_from_storage(storage_context, index_id="vector_index")
-# else:
-#     index = VectorStoreIndex.from_documents(documents, use_async=True, show_progress=True)
-
-# # Save index to disk
-# if save_index:
-#     index.set_index_id("vector_index")
-#     index.storage_context.persist("./vector_store")
+# Save index to disk
+if save_index:
+    index.set_index_id("vector_index")
+    index.storage_context.persist("./vector_store")
 
 # # See meta data
 # index.ref_doc_info
 
-# Build index
-index_1 = VectorStoreIndex.from_documents(
-    doc_1, use_async=True, service_context=service_context
+
+# Configure retriever
+retriever = VectorIndexRetriever(
+    index=index,
+    similarity_top_k=3,
 )
 
-index_2 = VectorStoreIndex.from_documents(
-    doc_2, use_async=True, service_context=service_context
+# Configure response synthesizer - when used in a query engine, the response synthesizer is used after nodes are retrieved from a retriever, and after any node-postprocessors are ran.
+response_synthesizer = get_response_synthesizer(
+    response_mode="tree_summarize",  # see https://docs.llamaindex.ai/en/stable/module_guides/deploying/query_engine/response_modes.html
+    structured_answer_filtering=True, # https://docs.llamaindex.ai/en/stable/module_guides/querying/response_synthesizers/root.html
 )
 
-
-# # configure retriever
-# retriever = VectorIndexRetriever(
-#     index=index,
-#     similarity_top_k=10,
-# )
-
-# # configure response synthesizer - when used in a query engine, the response synthesizer is used after nodes are retrieved from a retriever, and after any node-postprocessors are ran.
-# response_synthesizer = get_response_synthesizer(
-#     response_mode="accumulate",  # see https://docs.llamaindex.ai/en/stable/module_guides/deploying/query_engine/response_modes.html
-#     structured_answer_filtering=True, # https://docs.llamaindex.ai/en/stable/module_guides/querying/response_synthesizers/root.html
-# )
-
-# # assemble query engine
-# query_engine = RetrieverQueryEngine(
-#     retriever=retriever,
-#     response_synthesizer=response_synthesizer,
-#     node_postprocessors=[SimilarityPostprocessor(similarity_cutoff=0.7)],
-# )
-
-# Build query engines
-query_engine_1 = index_1.as_query_engine(similarity_top_k=3)
-query_engine_2 = index_2.as_query_engine(similarity_top_k=3)
-
-query_engine_tools = [
-    QueryEngineTool(
-        query_engine=query_engine_1,
-        metadata=ToolMetadata(
-            name="887b5a418b8292c1",
-            description="Provides financial information about UP Fintech",
-        ),
-    ),
-    QueryEngineTool(
-        query_engine=query_engine_2,
-        metadata=ToolMetadata(
-            name="813f156f044d18d0",
-            description="Provides financial information about Top Strike",
-        ),
-    ),
-]
-
-sub_query_engine = SubQuestionQueryEngine.from_defaults(
-    query_engine_tools=query_engine_tools,
-    service_context=service_context,
-    use_async=True,
-    question_gen=LLMQuestionGenerator.from_defaults(service_context=service_context),
+# Assemble query engine
+query_engine = RetrieverQueryEngine(
+    retriever=retriever,
+    response_synthesizer=response_synthesizer,
+    node_postprocessors=[SimilarityPostprocessor(similarity_cutoff=0.8)],
 )
 
+# response = query_engine.query("what is the revenue for UP Fintech?")# and Top Strike")
 
-# # Testing
+# print(response)
 
-# from llama_index.question_gen.prompts import build_tools_text
-# from llama_index.schema import QueryBundle
-# question_gen = LLMQuestionGenerator.from_defaults(service_context=service_context)
-# prompt_dict = question_gen._get_prompts()
-# print(prompt_dict)
+from llama_index.llama_pack import download_llama_pack
 
+QueryRewritingRetrieverPack = download_llama_pack(
+    "QueryRewritingRetrieverPack",
+    "./query_rewriting_pack",
+    # leave the below commented out (was for testing purposes)
+    # llama_hub_url="https://raw.githubusercontent.com/run-llama/llama-hub/jerry/add_llama_packs/llama_hub",
+)
+query_rewriting_pack = QueryRewritingRetrieverPack(
+    nodes,
+    chunk_size=256,
+    vector_similarity_top_k=2,
+)
 
-# tools=ToolMetadata(
-#             name="887b5a418b8292c1",
-#             description="Provides financial information about UP Fintech",
-#         )
-
-# llm_llama2.predict(prompt=prompt_dict,
-#                    tools_str=build_tools_text([tools]),
-#                    query_str=QueryBundle(query_str="Compare revenues for UP Fintech and Top Strike").query_str,
-#         ),
-
-response = sub_query_engine.query("Compare revenues for UP Fintech and Top Strike")
-
-print(response)
+# this will run the full pack
+response = query_rewriting_pack.run("Compare revenues for UP Fintech and Top Strike")
+print(str(response))
 
 
-
-
-# # define prompt viewing function
-# from IPython.display import Markdown, display
-# def display_prompt_dict(prompts_dict):
-#     for k, p in prompts_dict.items():
-#         text_md = f"**Prompt Key**: {k}<br>" f"**Text:** <br>"
-#         display(Markdown(text_md))
-#         print(p.get_template())
-#         display(Markdown("<br><br>"))
-
-# display_prompt_dict(question_gen.get_prompts())
 
 # Why same title for both documents in meta data???? Noodes arg in title extractor should be set to length of nodes!
 # NEXT UP!! SUBQUERY OR STEP-BACK PROMPTING IN CASE WE WISH TO COMPARE COMPANIES
