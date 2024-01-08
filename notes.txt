@@ -1,0 +1,5 @@
+
+* Hyperparameter optim: optimize chunk sizes and top_k using LlamaIndex Chunk Size Optimization Recipe
+* LlamaIndex Information Compression Recipe
+* FLAREInstructQueryEngine
+* Speed optimize LLM
