@@ -17,7 +17,7 @@ PREFIX = """\
 Given a user question, and a list of tools, output a list of relevant sub-questions \
 in json format that when composed can help answer the full user question. \
 Below you see Example 1, which shows you how output should look given an input. \
-Your job is to complete the output in example 2. Hence, your answer should in the folowwing structure: \
+Your job is to complete the output in example 2. Hence, your answer should be in the following structure: \
 \n\n \
 ```json  \n\
 X \

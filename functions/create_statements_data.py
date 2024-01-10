@@ -40,7 +40,7 @@ def convert_statements_from_json_to_jsonl(input_file, output_file, key_items):
 
 if __name__ == "__main__":
 
-    key_items = ["id", "statement2paragraphs"]
+    key_items = ["id", "title", "statement2paragraphs"]
     key_items_file_name = ["text" if key_item == "statement2paragraphs" else key_item for key_item in key_items]
     input_file = 'data/statements.json'
     output_file = 'data/' + 'statements_' + "_".join(key_items_file_name) + '.jsonl'

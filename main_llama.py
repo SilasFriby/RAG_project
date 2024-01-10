@@ -173,10 +173,6 @@ print(str(response))
 
 
 
-# Why same title for both documents in meta data???? Noodes arg in title extractor should be set to length of nodes!
-# NEXT UP!! SUBQUERY OR STEP-BACK PROMPTING IN CASE WE WISH TO COMPARE COMPANIES
-
-
 # remotely_run = HuggingFaceInferenceAPI(
 #     model_name="berkeley-nest/Starling-LM-7B-alpha",
 #     token=HF_TOKEN,

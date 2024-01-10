@@ -1,5 +1,7 @@
 
 * Hyperparameter optim: optimize chunk sizes and top_k using LlamaIndex Chunk Size Optimization Recipe
-* LlamaIndex Information Compression Recipe
+* LlamaIndex Information Compression Recipe - can help save money and time due to less tokens sent to LLM
 * FLAREInstructQueryEngine
 * Speed optimize LLM
+* How do we test if the RAG model has improved? For example: Get GPT4 (or another LLM) to create questions from documents and their answers. Test RAG on these questions. 
+* Test different retrievers
