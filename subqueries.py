@@ -10,7 +10,7 @@ import nest_asyncio
 from llama_index.llms import Ollama, OpenAI, HuggingFaceInferenceAPI, Perplexity 
 from llama_index.embeddings import HuggingFaceEmbedding
 from llama_index.question_gen.llm_generators import LLMQuestionGenerator
-from prompts.sub_question_prompt_template import SUB_QUESTION_PROMPT_TMPL
+from prompts.sub_question_prompt_template import CUSTOM_SUB_QUESTION_PROMPT_TMPL
 
 # Initialize variables
 documents_dir = "data/statements_txt_files"
@@ -102,7 +102,7 @@ query_engine_tools = [
 
 # Question generator
 question_gen = LLMQuestionGenerator.from_defaults(
-    prompt_template_str= SUB_QUESTION_PROMPT_TMPL
+    prompt_template_str= CUSTOM_SUB_QUESTION_PROMPT_TMPL
 )
 
 # Sub query engine

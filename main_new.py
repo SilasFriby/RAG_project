@@ -8,10 +8,9 @@ from llama_index.query_engine import SubQuestionQueryEngine
 from llama_index.callbacks import CallbackManager, LlamaDebugHandler
 from llama_index import ServiceContext
 import nest_asyncio
-from llama_index.llms import Ollama, OpenAI, HuggingFaceInferenceAPI, Perplexity 
+from llama_index.llms import Ollama, OpenAI, HuggingFaceInferenceAPI#, Perplexity 
 from llama_index.embeddings import HuggingFaceEmbedding
 from llama_index.question_gen.llm_generators import LLMQuestionGenerator
-from prompts.sub_question_prompt_template import SUB_QUESTION_PROMPT_TMPL
 from llama_index.storage.docstore import SimpleDocumentStore
 from llama_index.storage import StorageContext
 from llama_index.schema import BaseNode, NodeRelationship
@@ -30,18 +29,23 @@ from llama_index.postprocessor import LLMRerank
 from llama_index.schema import NodeWithScore, QueryBundle
 from typing import Tuple
 from llama_index.schema import BaseNode, MetadataMode
-from prompts.llm_re_ranker_prompt_template import CHOICE_SELECT_PROMPT
+from prompts.llm_re_ranker_prompt_template import CUSTOM_CHOICE_SELECT_PROMPT
+from prompts.sub_question_prompt_template import CUSTOM_SUB_QUESTION_PROMPT_TMPL
+from prompts.vector_store_query_prompt_template import CUSTOM_VECTOR_STORE_QUERY_PROMPT_TMPL
+from llama_index.indices.vector_store.retrievers import VectorIndexAutoRetriever
+from llama_index.vector_stores.types import MetadataInfo, VectorStoreInfo
+from custom_classes.custom_perplexity_llm import CustomPerplexityLLM
 
 
 # Initialize variables
 documents_dir = "data/statements_txt_files"
-documents_file_path = "data/statements_id_title_text_sub.jsonl"
-llm_model_names = ["llama2", "gpt-3.5-turbo-0613", "codellama-34b-instruct"]
+documents_file_path = "data/test.jsonl" #statements_id_title_text_sub.jsonl"
+llm_model_names = ["llama2", "gpt-3.5-turbo-0613", "mixtral-8x7b-instruct"]#"mistral-7b-instruct"] #"codellama-34b-instruct"]
 llm_temp = 0
 llm_response_max_tokens = 1024
 choose_llm_model = 2
 API_URL = "https://ghprpg1pq3gveb5b.us-east-1.aws.endpoints.huggingface.cloud"
-embed_model_name = "WhereIsAI/UAE-Large-V1" #"intfloat/e5-mistral-7b-instruct" #"BAAI/bge-large-en-v1.5" #"sentence-transformers/all-MiniLM-L6-v2"
+embed_model_name = "text-embedding-ada-002" #"WhereIsAI/UAE-Large-V1" #"intfloat/e5-mistral-7b-instruct" #"BAAI/bge-large-en-v1.5" #"sentence-transformers/all-MiniLM-L6-v2"
 top_k = 10
 chunk_size = 512
 chunk_overlap = 20
@@ -75,7 +79,7 @@ elif choose_llm_model == 1:
         api_key=os.getenv("OPENAI_API_KEY")
     )
 elif choose_llm_model == 2:
-    llm_model = Perplexity(
+    llm_model = CustomPerplexityLLM(
         model=llm_model_names[choose_llm_model],
         temperature=llm_temp,
         max_tokens=llm_response_max_tokens,
@@ -89,9 +93,18 @@ elif choose_llm_model == 3:
         token=os.getenv("HUGGING_FACE_TOKEN"),
     )
 
+from llama_index.llms import ChatMessage
+
+# messages_dict = [
+#     {"role": "system", "content": "Be precise and concise."},
+#     {"role": "user", "content": "Tell me 5 sentences about Perplexity."},
+# ]
+# messages = [ChatMessage(**msg) for msg in messages_dict]
+# llm_model.chat(messages)
+
 # Embedding
 # embed_model = HuggingFaceEmbedding(model_name=embed_model_name)
-embed_model = OpenAIEmbedding()
+embed_model = OpenAIEmbedding(model=embed_model_name)
 
 # Read the documents from the directory
 # reader = SimpleDirectoryReader(input_dir=documents_dir, filename_as_id=True)
@@ -107,7 +120,9 @@ with open(documents_file_path, "r") as file:
 
 # Metadata
 # Create Document objects with titles in their metadata
+# documents = [Document(text=info['text'], metadata={'company_name': info['company_name'], 'title': info['title'], 'document_id': info['id']}) for info in documents_info]
 documents = [Document(text=info['text'], metadata={'title': info['title'], 'document_id': info['id']}) for info in documents_info]
+
 
 # from llama_index.schema import MetadataMode
 # print(documents[0].get_content(metadata_mode=MetadataMode.LLM))
@@ -129,48 +144,104 @@ service_context = ServiceContext.from_defaults(
 # Set the global service context
 set_global_service_context(service_context)
 
-# Pinecone index
-pinecone.init(
-    api_key=os.getenv("PINECONE_API_KEY"), 
-    environment="gcp-starter")
-pinecone.delete_index( "ragindex")
-pinecone_index = pinecone.create_index(
-    "ragindex", 
-    dimension=1536, 
-    metric="dotproduct", 
-    pod_type="p1"
-)
-# pinecone.delete_index("ragindex")
+# # Initialize Pinecone 
+# pinecone.init(
+#     api_key=os.getenv("PINECONE_API_KEY"), 
+#     environment="gcp-starter")
+# pinecone.delete_index( "ragindex")
+# pinecone_index = pinecone.create_index(
+#     "ragindex", 
+#     dimension=1536, 
+#     metric="dotproduct", 
+#     pod_type="p1"
+# )
 
-# Vector store - set add_sparse_vector=True to compute sparse vectors during upsert
-vector_store = PineconeVectorStore(
-    pinecone_index=pinecone_index,
-    add_sparse_vector=True,
-    index_name="ragindex",
-    environment="gcp-starter",
-)
+# # Vector store Pinecone - set add_sparse_vector=True to compute sparse vectors during upsert
+# vector_store = PineconeVectorStore(
+#     pinecone_index=pinecone_index,
+#     add_sparse_vector=True,
+#     index_name="ragindex",
+#     environment="gcp-starter",
+# )
+
+
+import logging
+import sys
+
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+logging.getLogger().addHandler(logging.StreamHandler(stream=sys.stdout))
+
+import chromadb
+from llama_index.vector_stores import ChromaVectorStore
+
+chroma_client = chromadb.EphemeralClient()
+chroma_collection = chroma_client.create_collection("quickstart")
+vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
 
 # Storage context
 storage_context = StorageContext.from_defaults(vector_store=vector_store)
+
+# Index
 index = VectorStoreIndex.from_documents(
-    documents, storage_context=storage_context
+    documents=documents, 
+    storage_context=storage_context,
+    service_context=service_context,
+    show_progress=True,
 )
 
-# Retriver
-retriever = VectorIndexRetriever(
-        index=index,
-        similarity_top_k=top_k,
+# Metadata filters
+vector_store_info = VectorStoreInfo(
+    content_info="Financial statements",
+    metadata_info=[
+        MetadataInfo(
+            name="title",
+            type="str",
+            description=(
+                "The title of the financial statement, hence a full sentence, such as for example 'Digizuite publishes the half-year report for 2023-H1'"
+            ),
+        ),
+        MetadataInfo(
+            name="document_id",
+            type="str",
+            description=(
+                "A unique identifier for the financial statement, for example b2fc1032799f655b"
+            ),
+        ),
+        # MetadataInfo(
+        #     name="company_name",
+        #     type="str",
+        #     description=(
+        #         "The name of the company that published the financial statement, e.g. Digizuite"
+        #     ),
+        # ),
+    ],
 )
+
+# Retriever
+retriever = VectorIndexAutoRetriever(
+    index=index,
+    vector_store_info=vector_store_info,
+    similarity_top_k=top_k,
+    prompt_template_str=CUSTOM_VECTOR_STORE_QUERY_PROMPT_TMPL,
+)
+
+# # Retriver
+# retriever = VectorIndexRetriever(
+#         index=index,
+#         similarity_top_k=top_k,
+# )
 
 # Retrieved nodes
-retrieved_nodes = retriever.retrieve(query_str)
+retrieved_nodes = retriever.retrieve("Tell me about UP Fintech")
+print(retrieved_nodes[0].metadata)
+len(retrieved_nodes)
 
 # Re-ranking - HOW TO SETUP USING RE-RANKED NODES????
 reranker = LLMRerank(
             choice_batch_size=5,
             top_n=5,
             service_context=service_context,
-            choice_select_prompt=CHOICE_SELECT_PROMPT,
+            choice_select_prompt=CUSTOM_CHOICE_SELECT_PROMPT,
 )
 reranked_nodes = reranker.postprocess_nodes(
     nodes=retrieved_nodes, 
@@ -184,7 +255,7 @@ for node in reranked_nodes:
     print(node.node_id , node.metadata["title"])
 
 # Query engine
-query_engine = index.as_query_engine(retriever=retriever, reranked_nodes=reranked_nodes)
+query_engine = index.as_query_engine()#, reranked_nodes=reranked_nodes)
 response = query_engine.query(query_str)
 print(response)
 
@@ -223,7 +294,7 @@ query_engine_tools = [
 
 # Question generator
 question_gen = LLMQuestionGenerator.from_defaults(
-    prompt_template_str= SUB_QUESTION_PROMPT_TMPL
+    prompt_template_str= CUSTOM_SUB_QUESTION_PROMPT_TMPL
 )
 
 # Sub query engine

@@ -1,7 +1,7 @@
 from llama_index.prompts.base import PromptTemplate
 from llama_index.prompts.prompt_type import PromptType
 
-CHOICE_SELECT_PROMPT_TMPL = """ \n \
+CUSTOM_CHOICE_SELECT_PROMPT = """ \n \
     Given a user question, and a list of documents, please output a list of of numbers corresponding to the documents \n \
     you should consult in order to answer the user question. \n \
     Each document has a number next to it along with some metadata (e.g. file path, title, etc.) followed by the document text. \n \
@@ -40,7 +40,7 @@ CHOICE_SELECT_PROMPT_TMPL = """ \n \
     Output: \n \
 """
 
-CHOICE_SELECT_PROMPT = PromptTemplate(
-    CHOICE_SELECT_PROMPT_TMPL, prompt_type=PromptType.CHOICE_SELECT
+CUSTOM_CHOICE_SELECT_PROMPT = PromptTemplate(
+    CUSTOM_CHOICE_SELECT_PROMPT, prompt_type=PromptType.CHOICE_SELECT
 )
 
