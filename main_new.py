@@ -28,19 +28,28 @@ from llama_index.vector_stores import PineconeVectorStore
 from llama_index.postprocessor import LLMRerank
 from llama_index.schema import NodeWithScore, QueryBundle
 from typing import Tuple
-from llama_index.schema import BaseNode, MetadataMode
+from llama_index.schema import MetadataMode
 from prompts.llm_re_ranker_prompt_template import CUSTOM_CHOICE_SELECT_PROMPT
 from prompts.sub_question_prompt_template import CUSTOM_SUB_QUESTION_PROMPT_TMPL
 from prompts.vector_store_query_prompt_template import CUSTOM_VECTOR_STORE_QUERY_PROMPT_TMPL
+from prompts.qa_prompt_template import CUSTOM_QUESTION_GEN_TMPL
 from llama_index.indices.vector_store.retrievers import VectorIndexAutoRetriever
 from llama_index.vector_stores.types import MetadataInfo, VectorStoreInfo
 from custom_classes.custom_perplexity_llm import CustomPerplexityLLM
+from llama_index.extractors import QuestionsAnsweredExtractor, KeywordExtractor
+from llama_index.ingestion import IngestionPipeline
+import logging
+import sys
+import chromadb
+from llama_index.vector_stores import ChromaVectorStore
+from llama_index.response_synthesizers import get_response_synthesizer
+
 
 
 # Initialize variables
 documents_dir = "data/statements_txt_files"
 documents_file_path = "data/test.jsonl" #statements_id_title_text_sub.jsonl"
-llm_model_names = ["llama2", "gpt-3.5-turbo-0613", "mixtral-8x7b-instruct"]#"mistral-7b-instruct"] #"codellama-34b-instruct"]
+llm_model_names = ["llama2", "gpt-3.5-turbo-0613", "mixtral-8x7b-instruct"]#"mistral-7b-instruct"]
 llm_temp = 0
 llm_response_max_tokens = 1024
 choose_llm_model = 2
@@ -50,7 +59,10 @@ top_k = 10
 chunk_size = 512
 chunk_overlap = 20
 file_path_titles = "data/statements_id_title_sub.jsonl"
-query_str = "What was the revenue for UP Fintech?" #"What was the revenues for UP Fintech and Top Strike?"
+response_mode = "compact"
+n_keywords = 5
+n_qa = 3
+query_str = "What was the revenues for UP Fintech and Top Strike?"
 
 # Load environment variables from .env file
 load_dotenv()
@@ -93,24 +105,12 @@ elif choose_llm_model == 3:
         token=os.getenv("HUGGING_FACE_TOKEN"),
     )
 
-from llama_index.llms import ChatMessage
-
-# messages_dict = [
-#     {"role": "system", "content": "Be precise and concise."},
-#     {"role": "user", "content": "Tell me 5 sentences about Perplexity."},
-# ]
-# messages = [ChatMessage(**msg) for msg in messages_dict]
-# llm_model.chat(messages)
 
 # Embedding
 # embed_model = HuggingFaceEmbedding(model_name=embed_model_name)
 embed_model = OpenAIEmbedding(model=embed_model_name)
 
-# Read the documents from the directory
-# reader = SimpleDirectoryReader(input_dir=documents_dir, filename_as_id=True)
-# docs = reader.load_data()
-
-# Read jsonl file from documents file path
+# Read documents 
 documents_info = []
 with open(documents_file_path, "r") as file:
     for line in file:
@@ -122,11 +122,11 @@ with open(documents_file_path, "r") as file:
 # Create Document objects with titles in their metadata
 # documents = [Document(text=info['text'], metadata={'company_name': info['company_name'], 'title': info['title'], 'document_id': info['id']}) for info in documents_info]
 documents = [Document(text=info['text'], metadata={'title': info['title'], 'document_id': info['id']}) for info in documents_info]
+# documents = documents[:2]
 
-
-# from llama_index.schema import MetadataMode
-# print(documents[0].get_content(metadata_mode=MetadataMode.LLM))
-# print(documents[0].get_content(metadata_mode=MetadataMode.EMBED))
+# QA extractor
+qa_extractor = QuestionsAnsweredExtractor(questions=n_qa, prompt_template=CUSTOM_QUESTION_GEN_TMPL)
+keyword_extractor = KeywordExtractor(keywords=n_keywords)
 
 # Chunking
 text_splitter = SentenceSplitter(
@@ -138,56 +138,47 @@ text_splitter = SentenceSplitter(
 service_context = ServiceContext.from_defaults(
     llm=llm_model,
     embed_model=embed_model,
-    text_splitter=text_splitter,
+    transformations=[text_splitter, qa_extractor],
 )
 
 # Set the global service context
 set_global_service_context(service_context)
 
-# # Initialize Pinecone 
-# pinecone.init(
-#     api_key=os.getenv("PINECONE_API_KEY"), 
-#     environment="gcp-starter")
-# pinecone.delete_index( "ragindex")
-# pinecone_index = pinecone.create_index(
-#     "ragindex", 
-#     dimension=1536, 
-#     metric="dotproduct", 
-#     pod_type="p1"
-# )
 
-# # Vector store Pinecone - set add_sparse_vector=True to compute sparse vectors during upsert
-# vector_store = PineconeVectorStore(
-#     pinecone_index=pinecone_index,
-#     add_sparse_vector=True,
-#     index_name="ragindex",
-#     environment="gcp-starter",
-# )
-
-
-import logging
-import sys
-
+# Logging in order to see API calls
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logging.getLogger().addHandler(logging.StreamHandler(stream=sys.stdout))
 
-import chromadb
-from llama_index.vector_stores import ChromaVectorStore
 
+# Chromadb
 chroma_client = chromadb.EphemeralClient()
+# chroma_client.delete_collection("quickstart")
 chroma_collection = chroma_client.create_collection("quickstart")
 vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
 
 # Storage context
 storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
-# Index
-index = VectorStoreIndex.from_documents(
-    documents=documents, 
-    storage_context=storage_context,
-    service_context=service_context,
-    show_progress=True,
+# Ingestion pipeline
+pipeline = IngestionPipeline(
+    transformations=[
+        text_splitter, 
+        qa_extractor,
+        keyword_extractor,
+        embed_model,
+    ],
+    vector_store=vector_store,
 )
+
+# Nodes
+nodes = pipeline.run(documents=documents)
+# nodes[1].metadata
+# nodes[1].text
+# print(nodes[0].get_content(metadata_mode=MetadataMode.LLM))
+# print(documents[0].get_content(metadata_mode=MetadataMode.EMBED))
+
+# Index
+index = VectorStoreIndex.from_vector_store(vector_store)
 
 # Metadata filters
 vector_store_info = VectorStoreInfo(
@@ -225,61 +216,38 @@ retriever = VectorIndexAutoRetriever(
     prompt_template_str=CUSTOM_VECTOR_STORE_QUERY_PROMPT_TMPL,
 )
 
-# # Retriver
-# retriever = VectorIndexRetriever(
-#         index=index,
-#         similarity_top_k=top_k,
-# )
-
 # Retrieved nodes
 retrieved_nodes = retriever.retrieve("Tell me about UP Fintech")
 print(retrieved_nodes[0].metadata)
 len(retrieved_nodes)
 
-# Re-ranking - HOW TO SETUP USING RE-RANKED NODES????
+
+# Re-ranking - HOW TO SETUP USING RE-RANKED NODES???? Postprocessing nodes?
 reranker = LLMRerank(
             choice_batch_size=5,
             top_n=5,
             service_context=service_context,
             choice_select_prompt=CUSTOM_CHOICE_SELECT_PROMPT,
 )
-reranked_nodes = reranker.postprocess_nodes(
-    nodes=retrieved_nodes, 
-    query_str=query_str
+# reranked_nodes = reranker.postprocess_nodes(
+#     nodes=retrieved_nodes, 
+#     query_str=query_str
+# )
+
+# # Compare retrieved nodes and reranked nodes
+# for node in retrieved_nodes:
+#     print(node.node_id , node.metadata["title"])
+# for node in reranked_nodes:
+#     print(node.node_id , node.metadata["title"])
+
+# Respone synthesizer
+response_synthesizer = get_response_synthesizer(response_mode=response_mode)
+
+# Base query engine
+base_query_engine = index.as_query_engine(
+    response_synthesizer=response_synthesizer,
+    node_postprocessors=[reranker]
 )
-
-# Compare retrieved nodes and reranked nodes
-for node in retrieved_nodes:
-    print(node.node_id , node.metadata["title"])
-for node in reranked_nodes:
-    print(node.node_id , node.metadata["title"])
-
-# Query engine
-query_engine = index.as_query_engine()#, reranked_nodes=reranked_nodes)
-response = query_engine.query(query_str)
-print(response)
-
-
-
-from llama_index.retrievers import BM25Retriever
-new_retriever = BM25Retriever.from_defaults(index=index, similarity_top_k=top_k)
-new_retrieved_nodes = new_retriever.retrieve(QueryBundle(query_str))
-
-
-for i, node in enumerate(retrieved_nodes):
-    includes_firm = "UP Fintech" in node.text
-    if includes_firm:
-        print("NODE " + str(i) + "\n\n" + str(node.score) + "\n\n" + node.text + "\n\n")
- 
-for i, node in enumerate(new_retrieved_nodes):
-    # node = new_retrieved_nodes[0]
-    includes_firm = "UP Fintech" in node.text
-    if includes_firm:
-        print("NODE "  + str(i) + "\n\n" + str(node.score) + "\n\n" + node.text + "\n\n")
-
-
-# Base query engine - 
-base_query_engine = index.as_query_engine(retriever=base_retriever)
 
 # Set up base query engine as tool
 query_engine_tools = [
@@ -349,3 +317,35 @@ print(response)
 
 # for node in retrieved_nodes:
 #     print(node.metadata["title"])
+
+# # Initialize Pinecone 
+# pinecone.init(
+#     api_key=os.getenv("PINECONE_API_KEY"), 
+#     environment="gcp-starter")
+# pinecone.delete_index( "ragindex")
+# pinecone_index = pinecone.create_index(
+#     "ragindex", 
+#     dimension=1536, 
+#     metric="dotproduct", 
+#     pod_type="p1"
+# )
+
+# # Vector store Pinecone - set add_sparse_vector=True to compute sparse vectors during upsert (used for keyword search)
+# vector_store = PineconeVectorStore(
+#     pinecone_index=pinecone_index,
+#     add_sparse_vector=True,
+#     index_name="ragindex",
+#     environment="gcp-starter",
+# )
+
+# index = VectorStoreIndex.from_documents(
+#     documents=documents, 
+#     storage_context=storage_context,
+#     service_context=service_context,
+#     show_progress=True,
+# )
+
+# retriever = VectorIndexRetriever(
+#     index=index,
+#     similarity_top_k=top_k,
+# )
