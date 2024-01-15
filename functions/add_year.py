@@ -5,7 +5,6 @@ from dotenv import load_dotenv
 from llama_index.llms import Ollama, OpenAI #, Perplexity 
 from custom_classes.custom_perplexity_llm import CustomPerplexityLLM
 from llama_index.llms import ChatMessage
-import ast
 
 # Initialize variables
 documents_file_path = "data/test.jsonl" #statements_id_title_text_sub.jsonl"
@@ -13,7 +12,7 @@ llm_model_names = ["llama2", "gpt-3.5-turbo-0613", "mixtral-8x7b-instruct"]#"mis
 llm_temp = 0
 llm_response_max_tokens = 1024
 choose_llm_model = 2
-batch_size = 5
+batch_size = 10
 
 # Load environment variables from .env file
 load_dotenv()
@@ -59,20 +58,16 @@ len(titles)
 
 def get_prompt(titles):
 
-    # Prompt to extract time period
+    # Prompt to extract year
     PROMPT_PREFIX = """
     Act as an expert in named entity regognition. \n \
-    Your job is to extract the entity "time period" from the title of financial statements. \n \
+    Your job is to extract the entity "year" from the title of financial statements. \n \
 
     Below you see Example 1 which shows you how the output list should look given an input list. \
-    If no time period is present in the title, the output list should be an empty list for that entry, see the second entry in Example 1. \n\n \
+    If no year is present in the title, the output should be None for that entry, see the second entry in Example 1. \n\n \
     Your job is to complete the output list in example 2. Hence, your answer should be in the following structure: \
     \n\n \
-    [time period 1,\ntime period 2,\ntime period 3,\n...] \n\n \
-    
-    where each time period is a list of the form: [X, Y, Z] where X is the year (e.g 2023) and Y and Z are months, hence they have to be integers >= 1 and <=12 with Y being less than or equal to Z. \n\n \
-
-    IMPORTANT! Remember that if the time period consists of a whole year, then Y and Z should be 1 and 12 respectively. \n\n \
+    [year 1,\nyear 2,\nyear 3,\n...] \n\n \
 
     IMPORTANT! Provide no text apart from the output list in your answer. \n\n \
 
@@ -87,7 +82,7 @@ def get_prompt(titles):
     "Top Strike Announces 2023 Fourth Quarter and Annual Financial Results ending April 30, 2023 and Corporate Update"] \n\n \
 
     Output list: \n \
-    [[2023, 1, 6],\n[],\n[2023, 4, 6],\n[2023, 1, 12]\n[2023, 1, 6]\n[2023, 1, 12]] \n\n
+    [2023,\nNone,\n2023,\n2023,\n2023,\n2023] \n\n
     """
 
     PROMPT_SUFFIX = f"""
@@ -104,8 +99,7 @@ def get_prompt(titles):
     return PROMPT
 
 # Loop over titles and generate prompts
-
-time_periods = []
+years = []
 for i in range(0, len(titles), batch_size):
     print(i)
     titles_batch = titles[i:i+batch_size]
@@ -119,24 +113,24 @@ for i in range(0, len(titles), batch_size):
     # Generate response from the LLM
     response = llm_model.chat(messages)
     response_dict = response.dict()["message"]["content"]
-    response_dict = response_dict.replace('[[', '[')
-    response_dict = response_dict.replace(']]', ']')
-    time_periods_batch = response_dict.split(",\n")
+    response_dict = response_dict.replace('[', '')
+    response_dict = response_dict.replace(']', '')
+    years_batch = response_dict.split(",\n")
+    years.extend(years_batch)
 
-    # Convert to list using ast.literal_eval
-    for k, tp in enumerate(time_periods_batch):
-        tp = ast.literal_eval(tp)
-        if len(tp) == 1:
-            tp = [tp[0], 1, 12]
-        time_periods_batch[k] = tp
+# Convert to integers
+for i, year in enumerate(years):
+    if year == 'None':
+        year = 0
+    else:
+        year = int(year)
+    years[i] = year
 
-    time_periods.extend(time_periods_batch)
+len(years)
 
-len(time_periods)
-
-# Add time period to documents
+# Add year to documents
 for i, doc in enumerate(documents_info):
-    doc["time_period"] = time_periods[i]
+    doc["year"] = years[i]
 
 # Save documents
 with open(documents_file_path, "w") as file:
@@ -145,14 +139,14 @@ with open(documents_file_path, "w") as file:
         file.write("\n")
 
 
-# remove "time_period" and "time_period_2" from documents and save to file
-for doc in documents_info:
-    del doc["time_period"]
+# # remove "time_period" and "time_period_2" from documents and save to file
+# for doc in documents_info:
+#     del doc["year"]
 
-with open("data/test.jsonl", "w") as file:
-    for doc in documents_info:
-        json.dump(doc, file)
-        file.write("\n")
+# with open("data/test.jsonl", "w") as file:
+#     for doc in documents_info:
+#         json.dump(doc, file)
+#         file.write("\n")
 
 
     
