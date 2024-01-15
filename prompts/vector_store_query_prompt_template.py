@@ -17,29 +17,23 @@ from llama_index.vector_stores.types import (
 
 
 PREFIX = """ \n \
-Your goal is to structure the user's query given metadata. \n \
-The user query should be structured in such a way that it matches the request schema provided below. \n\n \
+Your job is to create a structured request for a database search. \n\n 
 
-Structured Request Schema: \n \
-When responding use a markdown code snippet with a JSON object formatted in the following schema \n\n \
+More specifically, given a query and metadata your job is to structure the query in such a way that it matches the request schema provided below. \n\n \
+
+<<Structured Request Schema>>: \n \
+Your output must be a markdown code snippet with a JSON object formatted in the following schema \n\n \
 
 {schema_str} \n\n \
 
-The query string should contain only text that is expected to match the contents of documents. \
-Any conditions in the filter should not be mentioned in the query as well. \
-Also make sure that filters only refer to attributes that exist in the metadata. \n\n \
+In cases where no filters should be used please return [] for the filter value. \n \
+Make sure that filters only refer to variables that exist in the metadata. \n \
+The query itself should remain unchanged in the structured request, see Example 1. \n\n \
 
-If the user's query explicitly mentions number of documents to retrieve, set top_k to \
-that number, otherwise do not set top_k. \n\n \
+Your job is to complete the structured request in Example 2. \n \
+Provide nothing else but the structured request. \n\n \
 
-Below you see Example 1, which shows you how the structured request should look given a metadata filter. \n\n \
 
-Your job is to complete the structured request in example 2 given the user query, the metadata filter and the additional information. \
-Provide nothing else but the structured request in the format specified above. \n\n \
-
-At last, but not least, assume that the descriptions in the metadata are written by an expert, therefore your must pay close attention to the descriptionså. \n \
-Hence, it is important that filters are only applied when and if text from the user query matches the decriptions from metadata. \n \
-In cases where no filters should be used please return [] for the filter value. \n\n \
 
 """
 example_info = VectorStoreInfo(
@@ -72,7 +66,7 @@ example_info = VectorStoreInfo(
 example_query = "What are some books by Jane Austen published after 1813 that explore the theme of marriage for social standing?"
 
 example_output = VectorStoreQuerySpec(
-    query="Books related to theme of marriage for social standing",
+    query=example_query,
     filters=[
         MetadataFilter(key="year", value="1813", operator=FilterOperator.GT),
         MetadataFilter(key="author", value="Jane Austen"),
@@ -129,3 +123,7 @@ CUSTOM_VECTOR_STORE_QUERY_PROMPT = PromptTemplate(
 )
 
 # print(CUSTOM_VECTOR_STORE_QUERY_PROMPT_TMPL)
+# The query string should contain only text that is expected to match the contents of documents. \n \
+# Any conditions in the filter should not be mentioned in the query as well. \n \
+# The query string should contain only text that is expected to match the contents of documents. \n \
+# Any conditions in the filter should not be mentioned in the query as well. \n \

@@ -34,9 +34,7 @@ from typing import Tuple
 from llama_index.schema import MetadataMode
 from prompts.llm_re_ranker_prompt_template import CUSTOM_CHOICE_SELECT_PROMPT
 from prompts.sub_question_prompt_template import CUSTOM_SUB_QUESTION_PROMPT_TMPL
-from prompts.vector_store_query_prompt_template import (
-    CUSTOM_VECTOR_STORE_QUERY_PROMPT_TMPL,
-)
+from prompts.vector_store_query_prompt_template import CUSTOM_VECTOR_STORE_QUERY_PROMPT_TMPL
 from prompts.qa_prompt_template import CUSTOM_QUESTION_GEN_TMPL
 from llama_index.indices.vector_store.retrievers import VectorIndexAutoRetriever
 from llama_index.vector_stores.types import MetadataInfo, VectorStoreInfo
@@ -54,13 +52,11 @@ from llama_index.response_synthesizers import get_response_synthesizer
 documents_dir = "data/statements_txt_files"
 documents_file_path = "data/test.jsonl"  # statements_id_title_text_sub.jsonl"
 llm_model_names = [
-    "gpt-4",
     "mixtral-8x7b-instruct",
-] 
+]  
 llm_temp = 0
 llm_response_max_tokens = 1024
-choose_llm_model = 1
-choose_llm_model_eval = 0
+choose_llm_model = 0
 embed_model_name = "text-embedding-ada-002"  # "WhereIsAI/UAE-Large-V1" #"intfloat/e5-mistral-7b-instruct" #"BAAI/bge-large-en-v1.5" #"sentence-transformers/all-MiniLM-L6-v2"
 top_k = 10
 chunk_size = 512
@@ -69,6 +65,7 @@ file_path_titles = "data/statements_id_title_sub.jsonl"
 response_mode = "compact"
 n_keywords = 5
 n_qa = 3
+llm_model_name_gold_standard = "gpt-4"
 query_str = "What was the revenues for UP Fintech and Top Strike?"
 
 # Load environment variables from .env file
@@ -84,36 +81,21 @@ openai.api_key = openai_api_key
 nest_asyncio.apply()
 
 # LLM
-if choose_llm_model == 0:
-    llm_model = OpenAI(
-        model=llm_model_names[choose_llm_model],
-        temperature=llm_temp,
-        max_tokens=llm_response_max_tokens,
-        api_key=os.getenv("OPENAI_API_KEY"),
-    )
-elif choose_llm_model == 1:
-    llm_model = CustomPerplexityLLM(
-        model=llm_model_names[choose_llm_model],
-        temperature=llm_temp,
-        max_tokens=llm_response_max_tokens,
-        api_key=os.getenv("PERPLEXITY_API_KEY"),
-    )
+llm_model = CustomPerplexityLLM(
+    model=llm_model_names[choose_llm_model],
+    temperature=llm_temp,
+    max_tokens=llm_response_max_tokens,
+    api_key=os.getenv("PERPLEXITY_API_KEY"),
+)
 
-# LLM eval
-if choose_llm_model_eval == 0:
-    llm_model_eval = OpenAI(
-        model=llm_model_names[choose_llm_model_eval],
-        temperature=llm_temp,
-        max_tokens=llm_response_max_tokens,
-        api_key=os.getenv("OPENAI_API_KEY"),
-    )
-elif choose_llm_model_eval == 1:
-    llm_model_eval = CustomPerplexityLLM(
-        model=llm_model_names[choose_llm_model_eval],
-        temperature=llm_temp,
-        max_tokens=llm_response_max_tokens,
-        api_key=os.getenv("PERPLEXITY_API_KEY"),
-    )
+# LLM gold standard
+llm_model_gold_standard = OpenAI(
+    model=llm_model_name_gold_standard,
+    temperature=llm_temp,
+    max_tokens=llm_response_max_tokens,
+    api_key=os.getenv("OPENAI_API_KEY"),
+)
+
 
 # Embedding
 # embed_model = HuggingFaceEmbedding(model_name=embed_model_name)
@@ -143,7 +125,7 @@ documents = [
     for info in documents_info
 ]
 
-documents = documents[:2]
+# documents = documents[:2]
 
 # QA extractor
 qa_extractor = QuestionsAnsweredExtractor(
@@ -205,53 +187,16 @@ nodes = pipeline.run(
 # Index
 index = VectorStoreIndex.from_vector_store(vector_store)
 
-# Metadata filters
-vector_store_info = VectorStoreInfo(
-    content_info="Financial statements",
-    metadata_info=[
-        # MetadataInfo( 
-        #     name="title",
-        #     type="str",
-        #     description=(
-        #         "The title of the financial statement, hence a full sentence, such as for example 'Digizuite publishes the half-year report for 2023-H1'"
-        #     ),
-        # ),
-        MetadataInfo(
-            name="document_id",
-            type="str",
-            description=(
-                "A unique identifier for the financial statement, for example b2fc1032799f655b"
-            ),
-        ),
-        MetadataInfo(
-            name="company_name",
-            type="str",
-            description=(
-                "The name of the company that published the financial statement, e.g. Digizuite"
-            ),
-        ),
-        MetadataInfo(
-            name="year",
-            type="int",
-            description=(
-                "The year corresponding to the financial statement, e.g. 2023"
-            ),
-        ),
-    ],
-)
-
 # Retriever
-retriever = VectorIndexAutoRetriever(
+retriever = VectorIndexRetriever(
     index=index,
-    vector_store_info=vector_store_info,
     similarity_top_k=top_k,
-    prompt_template_str=CUSTOM_VECTOR_STORE_QUERY_PROMPT_TMPL,
 )
 
 # # Retrieved nodes
-# retrieved_nodes = retriever.retrieve("Tell me about UP Fintech's results in 2022")
+# retrieved_nodes = retriever.retrieve(query_str)
 # print(retrieved_nodes[0].metadata)
-# len(retrieved_nodes)
+# print(len(retrieved_nodes))
 
 # Retriever evaluation
 import asyncio
@@ -260,7 +205,7 @@ from llama_index.evaluation import RetrieverEvaluator
 
 qa_dataset = generate_question_context_pairs(
     nodes, 
-    llm=llm_model_eval, 
+    llm=llm_model_gold_standard, 
     num_questions_per_chunk=1
 )
 
@@ -273,22 +218,21 @@ retriever_evaluator = RetrieverEvaluator.from_metric_names(
     ["mrr", "hit_rate"], retriever=retriever
 )
 
-# async def retriever_evaluation(qa_dataset):
-#     eval_results = await retriever_evaluator.aevaluate_dataset(qa_dataset)
-#     return eval_results
+async def retriever_evaluation(qa_dataset):
+    eval_results = await retriever_evaluator.aevaluate_dataset(qa_dataset)
+    return eval_results
 
-# eval_results = asyncio.run(retriever_evaluation(qa_dataset))
-# print(eval_results)
+eval_results = asyncio.run(retriever_evaluation(qa_dataset))
+print(eval_results)
 
-ids = list(qa_dataset.queries.keys())
-# k = 1
-# print(len(ids))
-# print(qa_dataset.queries[ids[k]])
-for i, id in enumerate(ids):
-    print(i)
-    retriever_evaluator.evaluate(
-        query=qa_dataset.queries[ids[i]],
-        expected_ids=qa_dataset.relevant_docs[ids[i]])
+# ids = list(qa_dataset.queries.keys())
+# i = 4
+# print(qa_dataset.queries[ids[i]])
+# for i, id in enumerate(ids):
+#     print(i)
+#     retriever_evaluator.evaluate(
+#         query=qa_dataset.queries[ids[i]],
+#         expected_ids=qa_dataset.relevant_docs[ids[i]])
 
 
 # Re-ranking of nodes
@@ -428,3 +372,58 @@ print(response)
 #         max_tokens=llm_response_max_tokens,
 #         token=os.getenv("HUGGING_FACE_TOKEN"),
 #     )
+
+
+# # Metadata filters
+# vector_store_info = VectorStoreInfo(
+#     content_info="Financial statements",
+#     metadata_info=[
+#         MetadataInfo(
+#             name="company_name",
+#             type="str",
+#             description=(
+#                 "The name of the company that published the financial statement, e.g. Digizuite"
+#             ),
+#         ),
+#         # MetadataInfo(
+#         #     name="year",
+#         #     type="int",
+#         #     description=(
+#         #         "The year corresponding to the financial statement, e.g. 2023"
+#         #     ),
+#         # ),
+#     ],
+# )
+
+# # Retriever
+# retriever = VectorIndexAutoRetriever(
+#     index=index,
+#     vector_store_info=vector_store_info,
+#     similarity_top_k=top_k,
+#     prompt_template_str=CUSTOM_VECTOR_STORE_QUERY_PROMPT_TMPL,
+# )
+
+# query_str = "Tell me about UP Fintech in 2022" #"Discuss the new ventures Caravelle International Group in 2022"# is planning to launch in 2023 and explain how they are expected to offset any potential weakness in their shipping business."# Also, provide a brief overview of the financial performance of the company in 2022."
+
+# from llama_index.vector_stores.types import VectorStoreQuerySpec
+# from llama_index.prompts.base import PromptTemplate
+# query_bundle = QueryBundle(query_str=query_str)
+# info_str = vector_store_info.json(indent=4)
+# schema_str = VectorStoreQuerySpec.schema_json(indent=4)
+# prompt = PromptTemplate(template=CUSTOM_VECTOR_STORE_QUERY_PROMPT_TMPL)
+
+# # call LLM
+# output = service_context.llm.predict(
+#     prompt,
+#     schema_str=schema_str,
+#     info_str=info_str,
+#     query_str=query_bundle.query_str,
+# )
+# print(output)
+
+
+# parse output
+# parse_generated_spec(output, query_bundle)
+
+# retriever._parse_generated_spec(QueryBundle(query_str=query_str))
+# retriever.generate_retrieval_spec(QueryBundle(query_str=query_str))
