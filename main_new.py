@@ -46,6 +46,9 @@ import sys
 import chromadb
 from llama_index.vector_stores import ChromaVectorStore
 from llama_index.response_synthesizers import get_response_synthesizer
+from llama_index.retrievers import KeywordTableSimpleRetriever
+from custom_classes.custom_retriever import CustomRetriever
+from llama_index import SimpleKeywordTableIndex
 
 
 # Initialize variables
@@ -66,7 +69,7 @@ response_mode = "compact"
 n_keywords = 5
 n_qa = 3
 llm_model_name_gold_standard = "gpt-4"
-query_str = "What was the revenues for UP Fintech and Top Strike?"
+query_str = "What was the revenues for UP Fintech and Top Strike?" #"Discuss the new ventures Caravelle International Group in 2022"# is planning to launch in 2023 and explain how they are expected to offset any potential weakness in their shipping business. Also, provide a brief overview of the financial performance of the company in 2022."
 
 # Load environment variables from .env file
 load_dotenv()
@@ -110,8 +113,6 @@ with open(documents_file_path, "r") as file:
 
 
 # Metadata
-# Create Document objects with titles in their metadata
-# documents = [Document(text=info['text'], metadata={'company_name': info['company_name'], 'title': info['title'], 'document_id': info['id']}) for info in documents_info]
 documents = [
     Document(
         text=info["text"],
@@ -124,7 +125,6 @@ documents = [
     )
     for info in documents_info
 ]
-
 # documents = documents[:2]
 
 # QA extractor
@@ -184,56 +184,53 @@ nodes = pipeline.run(
 # print(nodes[0].get_content(metadata_mode=MetadataMode.LLM))
 # print(documents[0].get_content(metadata_mode=MetadataMode.EMBED))
 
-# Index
-index = VectorStoreIndex.from_vector_store(vector_store)
+# Indexes
+vector_index = VectorStoreIndex.from_vector_store(vector_store)
+keyword_index = SimpleKeywordTableIndex(nodes=nodes)
 
-# Retriever
-retriever = VectorIndexRetriever(
-    index=index,
-    similarity_top_k=top_k,
+# Metadata filters
+vector_store_info = VectorStoreInfo(
+    content_info="Financial statements",
+    metadata_info=[
+        MetadataInfo(
+            name="company_name",
+            type="str",
+            description=(
+                "The name of the company that published the financial statement, e.g. Digizuite"
+            ),
+        ),
+        MetadataInfo(
+            name="year",
+            type="int",
+            description=(
+                "The year corresponding to the financial statement, e.g. 2023"
+            ),
+        ),
+    ],
 )
+
+# Custom retriever
+vector_retriever = VectorIndexRetriever(index=vector_index, similarity_top_k=2)
+keyword_retriever = KeywordTableSimpleRetriever(index=keyword_index)
+meta_filter_retreiver = VectorIndexAutoRetriever(
+    index=vector_index,
+    vector_store_info=vector_store_info,
+    similarity_top_k=top_k,
+    prompt_template_str=CUSTOM_VECTOR_STORE_QUERY_PROMPT_TMPL,
+)
+custom_retriever = CustomRetriever(
+    vector_retriever=vector_retriever, 
+    keyword_retriever=keyword_retriever,
+    meta_filter_retreiver=meta_filter_retreiver,)
 
 # # Retrieved nodes
-# retrieved_nodes = retriever.retrieve(query_str)
-# print(retrieved_nodes[0].metadata)
-# print(len(retrieved_nodes))
-
-# Retriever evaluation
-import asyncio
-from llama_index.evaluation import generate_question_context_pairs
-from llama_index.evaluation import RetrieverEvaluator
-
-qa_dataset = generate_question_context_pairs(
-    nodes, 
-    llm=llm_model_gold_standard, 
-    num_questions_per_chunk=1
-)
-
-# retriever = VectorIndexRetriever(
-#     index=index,
-#     similarity_top_k=top_k,
-# )
-
-retriever_evaluator = RetrieverEvaluator.from_metric_names(
-    ["mrr", "hit_rate"], retriever=retriever
-)
-
-async def retriever_evaluation(qa_dataset):
-    eval_results = await retriever_evaluator.aevaluate_dataset(qa_dataset)
-    return eval_results
-
-eval_results = asyncio.run(retriever_evaluation(qa_dataset))
-print(eval_results)
-
-# ids = list(qa_dataset.queries.keys())
-# i = 4
-# print(qa_dataset.queries[ids[i]])
-# for i, id in enumerate(ids):
-#     print(i)
-#     retriever_evaluator.evaluate(
-#         query=qa_dataset.queries[ids[i]],
-#         expected_ids=qa_dataset.relevant_docs[ids[i]])
-
+# query_str = "What was the revenue of Top Strike?"
+# retrieved_nodes1 = vector_retriever.retrieve(query_str)
+# print(retrieved_nodes1[0].metadata)
+# retrieved_nodes2 = keyword_retriever.retrieve(query_str)
+# print(retrieved_nodes2[0].metadata)
+# retrieved_nodes3 = meta_filter_retreiver.retrieve(query_str)
+# print(retrieved_nodes3[0].metadata)
 
 # Re-ranking of nodes
 reranker = LLMRerank(
@@ -242,24 +239,43 @@ reranker = LLMRerank(
     service_context=service_context,
     choice_select_prompt=CUSTOM_CHOICE_SELECT_PROMPT,
 )
-# reranked_nodes = reranker.postprocess_nodes(
-#     nodes=retrieved_nodes,
-#     query_str=query_str
-# )
-
-# # Compare retrieved nodes and reranked nodes
-# for node in retrieved_nodes:
-#     print(node.node_id , node.metadata["title"])
-# for node in reranked_nodes:
-#     print(node.node_id , node.metadata["title"])
 
 # Respone synthesizer
 response_synthesizer = get_response_synthesizer(response_mode=response_mode)
 
-# Base query engine
-base_query_engine = index.as_query_engine(
-    response_synthesizer=response_synthesizer, node_postprocessors=[reranker]
+# vector query engine
+vector_query_engine = RetrieverQueryEngine(
+    retriever=vector_retriever,
+    response_synthesizer=response_synthesizer,
 )
+# keyword query engine
+keyword_query_engine = RetrieverQueryEngine(
+    retriever=keyword_retriever,
+    response_synthesizer=response_synthesizer,
+)
+
+# custom query engine
+custom_query_engine = RetrieverQueryEngine(
+    retriever=custom_retriever,
+    response_synthesizer=response_synthesizer,
+)
+
+query_str = "What was the revenue of Top Strike?"
+response1 = vector_query_engine.query(query_str)
+# response2 = keyword_query_engine.query(query_str)
+response3 = custom_query_engine.query(query_str)
+
+print(response1)
+# print(response2)
+print(response3)
+
+# Base query engine
+base_query_engine = RetrieverQueryEngine(
+    retriever=custom_retriever,
+    response_synthesizer=response_synthesizer,
+    node_postprocessors=[reranker],
+)
+
 
 # Set up base query engine as tool
 query_engine_tools = [
@@ -288,6 +304,9 @@ sub_query_engine = SubQuestionQueryEngine.from_defaults(
 response = sub_query_engine.query(query_str)
 
 print(response)
+
+
+
 
 
 # from llama_index.vector_stores.types import MetadataInfo, VectorStoreInfo
@@ -427,3 +446,77 @@ print(response)
 
 # retriever._parse_generated_spec(QueryBundle(query_str=query_str))
 # retriever.generate_retrieval_spec(QueryBundle(query_str=query_str))
+
+# from llama_index.vector_stores.types import (
+#     FilterOperator,
+#     FilterCondition,
+#     MetadataFilters,
+#     MetadataFilter,
+# )
+
+# filters = MetadataFilters(
+#     filters=[
+#         MetadataFilter(key="year", value=2022, operator=FilterOperator.GTE),
+#         MetadataFilter(key="year", value=2023, operator=FilterOperator.LTE),
+#         MetadataFilter(key="company_name", value="Caravelle International Group", operator=FilterOperator.EQ),
+#     ],
+# )
+
+# query_str = "Tell me something" #"Discuss the new ventures Caravelle International Group in 2022"# is planning to launch in 2023 and explain how they are expected to offset any potential weakness in their shipping business."# Also, provide a brief overview of the financial performance of the company in 2022."
+
+
+# retriever = index.as_retriever(filters=filters)
+# retrieved_nodes = retriever.retrieve(query_str)
+# print(retrieved_nodes[0].metadata)
+
+# # Retriever evaluation
+# import asyncio
+# from llama_index.evaluation import generate_question_context_pairs
+# from llama_index.evaluation import RetrieverEvaluator
+
+# qa_dataset = generate_question_context_pairs(
+#     nodes, 
+#     llm=llm_model_gold_standard, 
+#     num_questions_per_chunk=1
+# )
+
+# retriever = VectorIndexRetriever(
+#     index=index,
+#     similarity_top_k=top_k,
+# )
+
+
+# retriever_evaluator = RetrieverEvaluator.from_metric_names(
+#     ["mrr", "hit_rate"], retriever=retriever
+# )
+
+# async def retriever_evaluation(qa_dataset):
+#     eval_results = await retriever_evaluator.aevaluate_dataset(qa_dataset)
+#     return eval_results
+
+# eval_results = asyncio.run(retriever_evaluation(qa_dataset))
+# print(eval_results)
+
+# ids = list(qa_dataset.queries.keys())
+# i = 4
+# print(qa_dataset.queries[ids[i]])
+# for i, id in enumerate(ids):
+#     print(i)
+#     retriever_evaluator.evaluate(
+#         query=qa_dataset.queries[ids[i]],
+#         expected_ids=qa_dataset.relevant_docs[ids[i]])
+
+# reranked_nodes = reranker.postprocess_nodes(
+#     nodes=retrieved_nodes,
+#     query_str=query_str
+# )
+
+# # Compare retrieved nodes and reranked nodes
+# for node in retrieved_nodes:
+#     print(node.node_id , node.metadata["title"])
+# for node in reranked_nodes:
+#     print(node.node_id , node.metadata["title"])
+
+# base_query_engine = index.as_query_engine(
+#     response_synthesizer=response_synthesizer, node_postprocessors=[reranker]
+# )

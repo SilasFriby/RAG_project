@@ -9,6 +9,8 @@ from llama_index.vector_stores.types import (
     MetadataInfo,
     VectorStoreInfo,
     VectorStoreQuerySpec,
+    FilterCondition,
+    MetadataFilters,
 )
 
 # NOTE: these prompts are inspired from langchain's self-query prompt,
@@ -26,9 +28,13 @@ Your output must be a markdown code snippet with a JSON object formatted in the 
 
 {schema_str} \n\n \
 
-In cases where no filters should be used please return [] for the filter value. \n \
-Make sure that filters only refer to variables that exist in the metadata. \n \
-The query itself should remain unchanged in the structured request, see Example 1. \n\n \
+Make sure that filters only refer to attributes that exist in the data source.
+Make sure that filters take into account the descriptions of attributes.
+Make sure that filters are only used as needed. If there are no filters that should be \
+applied return [] for the filter value. \n\n \
+
+If the user's query explicitly mentions number of documents to retrieve, set top_k to \
+that number, otherwise do not set top_k. \n\n \
 
 Your job is to complete the structured request in Example 2. \n \
 Provide nothing else but the structured request. \n\n \
@@ -66,7 +72,7 @@ example_info = VectorStoreInfo(
 example_query = "What are some books by Jane Austen published after 1813 that explore the theme of marriage for social standing?"
 
 example_output = VectorStoreQuerySpec(
-    query=example_query,
+    query="Books related to theme of marriage for social standing",
     filters=[
         MetadataFilter(key="year", value="1813", operator=FilterOperator.GT),
         MetadataFilter(key="author", value="Jane Austen"),

@@ -46,7 +46,7 @@ example_output = [
     ),
     SubQuestion(sub_question="What is the EBITDA of Lyft", tool_name="Financial statements"),
 ]
-example_output_str = json.dumps([x.dict() for x in example_output], indent=4)
+
 example_output_str = json.dumps([x.dict() for x in example_output], indent=4)
 
 
