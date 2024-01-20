@@ -45,37 +45,22 @@ Provide nothing else but the structured request. \n\n \
 example_info = VectorStoreInfo(
     content_info="Classic literature",
     metadata_info=[
-        MetadataInfo(name="author", type="str", description="Author name"),
         MetadataInfo(
-            name="book_title",
+            name="company_name",
             type="str",
-            description="Book title",
-        ),
-        MetadataInfo(
-            name="year",
-            type="int",
-            description="Year Published",
-        ),
-        MetadataInfo(
-            name="pages",
-            type="int",
-            description="Number of pages",
-        ),
-        MetadataInfo(
-            name="summary",
-            type="str",
-            description="A short summary of the book",
+            description=(
+                "The name of the company that published the financial statement, e.g. Apple"
+            ),
         ),
     ],
 )
 
-example_query = "What are some books by Jane Austen published after 1813 that explore the theme of marriage for social standing?"
+example_query = "What were the driving financial metrics for Apple in 2022?"
 
 example_output = VectorStoreQuerySpec(
-    query="Books related to theme of marriage for social standing",
+    query="What were the driving financial metrics in 2022?",
     filters=[
-        MetadataFilter(key="year", value="1813", operator=FilterOperator.GT),
-        MetadataFilter(key="author", value="Jane Austen"),
+        MetadataFilter(key="company_name", value="Apple", operator=FilterOperator.EQ),
     ],
 )
 
