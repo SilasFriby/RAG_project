@@ -33,6 +33,7 @@ huggingface-cli = "^0.1"
 logging = "^0.4.9.6"
 pinecone-client = "^2.2.4"
 chromadb = "^0.4.22"
+spacy = "^3.7.2"
 
 
 [build-system]

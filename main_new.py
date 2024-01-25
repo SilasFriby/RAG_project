@@ -264,50 +264,79 @@ else:
     )
 
 
-response = sub_query_engine.query(query_str)
-print(response)
+# response = sub_query_engine.query(query_str)
+# print(response)
 
 
+# Evaluation
+from llama_index.evaluation import RelevancyEvaluator
+from llama_index.evaluation import FaithfulnessEvaluator
+from llama_index.evaluation import DatasetGenerator
+from llama_index.evaluation import BatchEvalRunner
+
+# Sub documents
 
 
+# Gold service context
+service_context = ServiceContext.from_defaults(llm=llm_model)
 
-# from llama_index.vector_stores.types import MetadataInfo, VectorStoreInfo
+# create vector index from documents
+vector_index = VectorStoreIndex.from_documents(
+    documents=documents
+)
 
-# vector_store_info = VectorStoreInfo(
-#     content_info="Financial statements",
-#     metadata_info=[
-#          MetadataInfo(
-#             name="title",
-#             description="A title for each financial statement",
-#             type="string",
-#         ),
-#         MetadataInfo(
-#             name="document_id",
-#             description="A unique identifier for each financial statement",
-#             type="string",
-#         ),
-#     ]
+# Data generator
+data_generator = DatasetGenerator.from_documents(
+    documents=documents,
+    num_questions_per_chunk=1
+)
+
+# Evaluation questions
+eval_questions = data_generator.generate_questions_from_nodes()
+print(eval_questions)
+
+# Evaluation methods
+faithfulness_evaluator = FaithfulnessEvaluator(service_context=service_context)
+relevancy_evaluator = RelevancyEvaluator(service_context=service_context)
+
+# # Batch evaluation
+# runner = BatchEvalRunner(
+#     {"faithfulness": faithfulness_evaluator, "relevancy": relevancy_evaluator},
+#     workers=8
 # )
 
-# # Define retriever
-# from llama_index.retrievers import VectorIndexAutoRetriever
-
-# retriever = VectorIndexAutoRetriever(
-#     index,
-#     vector_store_info=vector_store_info,
-#     similarity_top_k=2,
-#     verbose=True,
+# eval_results = runner.evaluate_queries(
+#     vector_index.as_query_engine(), 
+#     queries=eval_questions,
 # )
-
-# retrieved_nodes = retriever.retrieve('What is the topic of the document with document_id 9a211f7b268c1ade?')
-# retrieved_nodes[0].metadata
+# print(str(eval_results))
 
 
-# retrieved_nodes = retriever.retrieve('What is the topic of the document with document_id 9a211f7b268c1ade?')
-# retrieved_nodes[0].metadata
+# Loop over evaluation questions
+faithfulness_eval_result_list = []
+relevancy_eval_result_list = []
 
-# for node in retrieved_nodes:
-#     print(node.metadata["title"])
+for i, q in enumerate(eval_questions):
+    print(str(i) + " out of " + len(eval_questions))
+    response = sub_query_engine.query(q)
+    faithfulness_eval_result = faithfulness_evaluator.evaluate_response(response=response)
+    relevancy_eval_result = relevancy_evaluator.evaluate_response(query=eval_questions[0], response=response)
+    faithfulness_eval_result_list.append(faithfulness_eval_result)
+    relevancy_eval_result_list.append(relevancy_eval_result_list)
+    
+    if not faithfulness_eval_result.passing:
+        print("Evaluation question number " + str(i) + " failed faithfulness test!") 
+
+    if not relevancy_eval_result.passing:
+        print("Evaluation question number " + str(i) + " failed relevancy test!" ) 
+
+
+print("Finished")  
+
+
+
+
+
 
 # # Initialize Pinecone
 # pinecone.init(
@@ -339,102 +368,6 @@ print(response)
 #     show_progress=True,
 # )
 
-# retriever = VectorIndexRetriever(
-#     index=index,
-#     similarity_top_k=top_k,
-# )
-
-# API_URL = "https://ghprpg1pq3gveb5b.us-east-1.aws.endpoints.huggingface.cloud"
-
-# elif choose_llm_model == 3:
-#     llm_model = HuggingFaceInferenceAPI(
-#         model_name=API_URL,
-#         temperature=llm_temp,
-#         max_tokens=llm_response_max_tokens,
-#         token=os.getenv("HUGGING_FACE_TOKEN"),
-#     )
-
-
-# # Metadata filters
-# vector_store_info = VectorStoreInfo(
-#     content_info="Financial statements",
-#     metadata_info=[
-#         MetadataInfo(
-#             name="company_name",
-#             type="str",
-#             description=(
-#                 "The name of the company that published the financial statement, e.g. Digizuite"
-#             ),
-#         ),
-#         # MetadataInfo(
-#         #     name="year",
-#         #     type="int",
-#         #     description=(
-#         #         "The year corresponding to the financial statement, e.g. 2023"
-#         #     ),
-#         # ),
-#     ],
-# )
-
-# # Retriever
-# retriever = VectorIndexAutoRetriever(
-#     index=index,
-#     vector_store_info=vector_store_info,
-#     similarity_top_k=top_k,
-#     prompt_template_str=CUSTOM_VECTOR_STORE_QUERY_PROMPT_TMPL,
-# )
-
-# query_str = "Tell me about UP Fintech in 2022" #"Discuss the new ventures Caravelle International Group in 2022"# is planning to launch in 2023 and explain how they are expected to offset any potential weakness in their shipping business."# Also, provide a brief overview of the financial performance of the company in 2022."
-
-# from llama_index.vector_stores.types import VectorStoreQuerySpec
-# from llama_index.prompts.base import PromptTemplate
-# query_bundle = QueryBundle(query_str=query_str)
-# info_str = vector_store_info.json(indent=4)
-# schema_str = VectorStoreQuerySpec.schema_json(indent=4)
-# prompt = PromptTemplate(template=CUSTOM_VECTOR_STORE_QUERY_PROMPT_TMPL)
-
-# # call LLM
-# output = service_context.llm.predict(
-#     prompt,
-#     schema_str=schema_str,
-#     info_str=info_str,
-#     query_str=query_bundle.query_str,
-# )
-# print(output)
-
-
-# parse output
-# parse_generated_spec(output, query_bundle)
-
-# retriever._parse_generated_spec(QueryBundle(query_str=query_str))
-# retriever.generate_retrieval_spec(QueryBundle(query_str=query_str))
-
-# from llama_index.vector_stores.types import (
-#     FilterOperator,
-#     FilterCondition,
-#     MetadataFilters,
-#     MetadataFilter,
-# )
-
-# filters = MetadataFilters(
-#     filters=[
-#         MetadataFilter(key="year", value=2022, operator=FilterOperator.GTE),
-#         MetadataFilter(key="year", value=2023, operator=FilterOperator.LTE),
-#         MetadataFilter(key="company_name", value="Caravelle International Group", operator=FilterOperator.EQ),
-#     ],
-# )
-
-# query_str = "Tell me something" #"Discuss the new ventures Caravelle International Group in 2022"# is planning to launch in 2023 and explain how they are expected to offset any potential weakness in their shipping business."# Also, provide a brief overview of the financial performance of the company in 2022."
-
-
-# retriever = index.as_retriever(filters=filters)
-# retrieved_nodes = retriever.retrieve(query_str)
-# print(retrieved_nodes[0].metadata)
-
-# # Retriever evaluation
-# import asyncio
-# from llama_index.evaluation import generate_question_context_pairs
-# from llama_index.evaluation import RetrieverEvaluator
 
 # qa_dataset = generate_question_context_pairs(
 #     nodes, 
